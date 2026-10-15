@@ -1,0 +1,13 @@
+# environments & secrets
+.venv/
+__pycache__/
+*.pyc
+.env
+# runtime data (audio cache, mixes, saved series)
+data/cache/
+data/audio/
+data/series/
+data/episodes/
+# misc
+.DS_Store
+*.log

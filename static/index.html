@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Kataribe Studio — AI audio-drama production on AMD</title>
+<link rel="stylesheet" href="/style.css?v=4"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='46' fill='%23ff8a1e'/></svg>"/>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="mark">語</div>
+    <div>Kataribe Studio<small>serialized audio drama, produced by agents on AMD GPUs</small></div>
+  </div>
+  <div class="spacer"></div>
+  <div class="badge" id="amdBadge" title="active inference provider">
+    <span class="dot"></span><span id="amdBadgeText">checking…</span>
+  </div>
+  <div class="badge" id="usageBadge" title="usage meter">
+    <span id="usageText">calls 0 · 0 tok · 0 ms</span>
+  </div>
+  <select id="providerSel" style="width:200px" title="inference provider">
+    <option value="amd">AMD Instinct — Token Factory</option>
+    <option value="fallback">Local dev endpoint</option>
+  </select>
+</header>
+
+<main>
+  <!-- =============== WRITERS' ROOM =============== -->
+  <section class="col" id="colLeft">
+    <h2>1 · Writers' Room</h2>
+    <div class="card">
+      <h3>Premise</h3>
+      <label class="field"><span>One line to start from</span>
+        <textarea id="premise" rows="3">海辺の町の高校、放課後の放送部。古い受信機が、死んだはずの先輩の声を受信しはじめる。</textarea>
+      </label>
+      <div class="row">
+        <label class="field" style="flex:1"><span>Genre</span>
+          <select id="genre">
+            <option>ミステリー</option><option>SF</option><option>日常・ヒューマンドラマ</option>
+            <option>ホラー</option><option>恋愛</option><option>ファンタジー</option>
+          </select>
+        </label>
+        <label class="field" style="flex:1"><span>Tone</span>
+          <select id="tone">
+            <option>温かいが少し不穏</option><option>静かで切ない</option><option>軽妙でにぎやか</option>
+            <option>緊張感のあるサスペンス</option><option>ノスタルジック</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label class="field" style="flex:1"><span>Cast size</span>
+          <select id="castSize"><option>2</option><option selected>3</option><option>4</option></select>
+        </label>
+        <button class="primary" id="btnBible" style="margin-top:16px">Develop story bible</button>
+      </div>
+    </div>
+
+    <div class="card hidden" id="bibleCard">
+      <h3 id="bibleTitle">—</h3>
+      <div class="hint" id="bibleLogline"></div>
+      <div class="hint mt" id="bibleWorld"></div>
+      <h3 class="mt">Cast &amp; voices</h3>
+      <div id="castList"></div>
+      <div class="hint" id="bibleHook"></div>
+    </div>
+
+    <h2 class="mt">2 · Episode plan</h2>
+    <div class="card">
+      <label class="field"><span>Episode number</span>
+        <input type="text" id="epNo" value="1"/>
+      </label>
+      <button id="btnOutline" disabled>Plan episode</button>
+      <div id="outlineList" class="mt"></div>
+    </div>
+  </section>
+
+  <!-- =============== SCENE DESK =============== -->
+  <section class="col" id="colMid">
+    <h2>3 · Scene desk</h2>
+    <div class="card" id="sceneEmpty">
+      <div class="hint">Develop a story bible, plan an episode, then open a scene here.
+      The scriptwriter drafts it; you edit lines like a real production desk —
+      every edit is respected by the voice booth.</div>
+    </div>
+    <div id="sceneWrap" class="hidden">
+      <div class="row mb">
+        <button id="btnDraft" class="primary">Draft scene with scriptwriter</button>
+        <button id="btnDirect">Ask the director</button>
+        <button id="btnApply" disabled>Apply direction</button>
+        <span class="spacer" style="flex:1"></span>
+        <span class="tag" id="sceneTag">—</span>
+      </div>
+      <div class="script" id="scriptBox">
+        <div class="scene-head"><b id="sceneTitle">scene</b><span class="hint" id="sceneOutro"></span></div>
+        <div id="lineList"></div>
+      </div>
+      <div class="card mt" id="directorCard" style="display:none">
+        <h3>Director notes <span class="tag" id="dirScore"></span></h3>
+        <div id="dirVerdict" class="hint mb"></div>
+        <div id="dirIssues"></div>
+        <label class="field mt"><span>Your notes to the director (optional)</span>
+          <textarea id="dirNotes" rows="2" placeholder="e.g. もっと静かな緊張感で。カイの台詞は短く。"></textarea>
+        </label>
+        <div class="row">
+          <button id="btnRevise">Send notes &amp; re-review</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============== VOICE BOOTH =============== -->
+  <section class="col" id="colRight">
+    <h2>4 · Voice booth &amp; mix</h2>
+    <div class="card">
+      <button class="primary" id="btnVoice" disabled>Synthesize voices</button>
+      <button id="btnRender" class="mt" disabled>Render episode MP3</button>
+      <div class="progress mt"><i id="progBar"></i></div>
+      <div class="hint mt" id="voiceHint">Voice engine: local neural TTS · per-character voices from the bible.</div>
+    </div>
+
+    <div class="card hidden" id="playerCard">
+      <h3>Episode master</h3>
+      <audio id="player" controls></audio>
+      <div class="row mt">
+        <a id="downloadMp3" href="#" download><button class="sm">Download MP3</button></a>
+        <span class="hint" id="renderInfo"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Inference · AMD</h3>
+      <div class="statgrid">
+        <div class="stat"><b id="stCalls">0</b><span>model calls</span></div>
+        <div class="stat"><b id="stTokens">0</b><span>tokens</span></div>
+        <div class="stat"><b id="stLat">0</b><span>avg ms</span></div>
+        <div class="stat"><b id="stErr">0</b><span>errors</span></div>
+      </div>
+      <div class="hint mt" id="modelInfo">—</div>
+    </div>
+
+    <div class="card">
+      <h3>Behind the scenes</h3>
+      <div class="feed" id="feed"></div>
+    </div>
+
+    <div class="card">
+      <h3>Library</h3>
+      <div class="row mb">
+        <button class="sm" id="btnSave">Save series</button>
+        <button class="sm" id="btnLoad">Refresh list</button>
+      </div>
+      <div id="seriesList"></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span>Kataribe Studio · prototype</span>
+  <span class="tag" id="footProvider">—</span>
+  <span class="spacer"></span>
+  <span class="hint">Everything you hear is generated: script by the model, voices by neural TTS, mix by ffmpeg.</span>
+</footer>
+
+<div class="overlay-note hidden" id="busyNote"><span class="spin"></span><span id="busyText">working…</span></div>
+
+<script src="/app.js?v=4"></script>
+</body>
+</html>
