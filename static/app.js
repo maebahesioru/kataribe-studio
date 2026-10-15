@@ -72,6 +72,10 @@ async function refreshStatus() {
   $("#modelInfo").textContent = `${cfg.label}${cfg.model ? " · model " + cfg.model : ""}`;
   $("#footProvider").textContent = cfg.label;
   $("#providerSel").value = act;
+  if (st.provider_locked) {
+    // hosted demo: the provider is fixed so every visitor runs on the AMD endpoint
+    $("#providerSel").style.display = "none";
+  }
 }
 
 async function loadSeriesList() {

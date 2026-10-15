@@ -23,7 +23,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -41,6 +41,32 @@ agents = agents_mod.Agents(llm)
 STATIC = Path(__file__).parent / "static"
 AUDIO = Path(os.environ.get("KATARIBE_DATA", "data")).resolve() / "audio"
 AUDIO.mkdir(parents=True, exist_ok=True)
+
+# ------- public-demo protections (enabled on the hosted instance) ----------
+PUBLIC = os.environ.get("KATARIBE_PUBLIC_MODE") == "1"
+ALLOW_PROVIDER_SWITCH = os.environ.get("KATARIBE_ALLOW_PROVIDER_SWITCH") == "1"
+RL_WINDOW, RL_MAX = 600, 30          # 30 model calls / 10 min / IP
+_rate: dict = {}
+
+def _rate_ok(ip: str) -> bool:
+    if not PUBLIC:
+        return True
+    import time as _t
+    now = _t.time()
+    arr = [t for t in _rate.get(ip, []) if now - t < RL_WINDOW]
+    if len(arr) >= RL_MAX:
+        _rate[ip] = arr
+        return False
+    arr.append(now)
+    _rate[ip] = arr
+    return True
+
+def guard(request: Request):
+    ip = request.headers.get("cf-connecting-ip") or (
+        request.client.host if request.client else "?"
+    ) or "?"
+    if not _rate_ok(ip):
+        raise HTTPException(429, "demo rate limit reached — please try again later")
 
 
 @app.middleware("http")
@@ -114,11 +140,15 @@ def status():
     st = llm.status()
     st["voices"] = {g: v for g, v in voice.VOICE_POOL.items()}
     st["narrator"] = voice.NARRATOR_VOICE
+    st["public_mode"] = PUBLIC
+    st["provider_locked"] = PUBLIC and not ALLOW_PROVIDER_SWITCH
     return st
 
 
 @app.post("/api/provider")
 def set_provider(req: ProviderReq):
+    if PUBLIC and not ALLOW_PROVIDER_SWITCH:
+        raise HTTPException(403, "provider is locked on this deployment")
     try:
         llm.set_provider(req.provider)
     except ValueError as e:
@@ -126,7 +156,7 @@ def set_provider(req: ProviderReq):
     return llm.status()
 
 
-@app.post("/api/bible")
+@app.post("/api/bible", dependencies=[Depends(guard)])
 def make_bible(req: BibleReq):
     try:
         return agents.bible(req.premise, req.genre, req.tone, req.cast_size)
@@ -134,7 +164,7 @@ def make_bible(req: BibleReq):
         raise HTTPException(502, f"model error: {e}")
 
 
-@app.post("/api/outline")
+@app.post("/api/outline", dependencies=[Depends(guard)])
 def make_outline(req: OutlineReq):
     try:
         return agents.outline(req.bible, req.prev_summary, req.episode_no)
@@ -142,7 +172,7 @@ def make_outline(req: OutlineReq):
         raise HTTPException(502, f"model error: {e}")
 
 
-@app.post("/api/scene")
+@app.post("/api/scene", dependencies=[Depends(guard)])
 def make_scene(req: SceneReq):
     try:
         return agents.scene(req.bible, req.episode_no, req.episode_title, req.scene)
@@ -150,7 +180,7 @@ def make_scene(req: SceneReq):
         raise HTTPException(502, f"model error: {e}")
 
 
-@app.post("/api/direct")
+@app.post("/api/direct", dependencies=[Depends(guard)])
 def direct(req: DirectReq):
     try:
         return agents.direct(req.bible, req.scene, req.notes)
@@ -158,7 +188,7 @@ def direct(req: DirectReq):
         raise HTTPException(502, f"model error: {e}")
 
 
-@app.post("/api/rewrite")
+@app.post("/api/rewrite", dependencies=[Depends(guard)])
 def rewrite(req: RewriteReq):
     try:
         return {"lines": agents.rewrite(req.bible, req.lines, req.notes)}
@@ -166,7 +196,7 @@ def rewrite(req: RewriteReq):
         raise HTTPException(502, f"model error: {e}")
 
 
-@app.post("/api/voices_for")
+@app.post("/api/voices_for", dependencies=[Depends(guard)])
 def voices_for(req: VoiceReq):
     """Resolve the cast to concrete voice parameters (shown in the UI)."""
     return {
@@ -183,7 +213,7 @@ class SummaryReq(BaseModel):
     scene_texts: list[str]
 
 
-@app.post("/api/summary")
+@app.post("/api/summary", dependencies=[Depends(guard)])
 def summary(req: SummaryReq):
     try:
         return agents.summarise(req.episode_no, req.episode_title, req.scene_texts)
@@ -191,7 +221,7 @@ def summary(req: SummaryReq):
         raise HTTPException(502, f"model error: {e}")
 
 
-@app.post("/api/voice")
+@app.post("/api/voice", dependencies=[Depends(guard)])
 def make_voice(req: VoiceReq):
     try:
         out = list(voice.synthesize_lines(req.scene, req.cast, req.only_ids))
@@ -216,7 +246,7 @@ def audio_proxy(path: str):
     return FileResponse(str(p), media_type="audio/mpeg")
 
 
-@app.post("/api/render")
+@app.post("/api/render", dependencies=[Depends(guard)])
 def render(req: RenderReq):
     try:
         safe = "".join(c for c in req.out_name if c.isalnum() or c in "-_") or "episode"
