@@ -128,7 +128,12 @@ def synthesize_lines(script: dict, cast: list[dict], only_ids: list[str] | None 
     for ln in script.get("lines", []):
         if only is not None and ln.get("id") not in only:
             continue
+        text = (ln.get("text") or "").strip()
+        if not text:
+            # the model occasionally emits a blank line — nothing to voice, skip it
+            # (previously this crashed the whole voice stage: "TTS produced no audio")
+            continue
         params = voice_for(cast, ln.get("who", ""))
-        path, cached = synthesize(ln.get("text", ""), params)
+        path, cached = synthesize(text, params)
         yield {"id": ln.get("id"), "who": ln.get("who"), "voice": params["voice"],
                 "path": str(path), "cached": cached}
